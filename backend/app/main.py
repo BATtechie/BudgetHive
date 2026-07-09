@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
+from app.db.init_db import init_db
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -10,6 +11,11 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
 )
+
+
+@app.on_event("startup")
+async def on_startup() -> None:
+    await init_db()
 
 # ------------------------------------------------------------------
 # CORS — allow the React frontend to talk to this API

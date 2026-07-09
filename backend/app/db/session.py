@@ -3,7 +3,7 @@ from app.config import settings
 
 # Async SQLAlchemy engine
 engine = create_async_engine(
-    settings.DATABASE_URL,
+    settings.async_database_url,
     echo=settings.DEBUG,
     future=True,
 )
