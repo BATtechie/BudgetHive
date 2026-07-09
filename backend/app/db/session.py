@@ -6,6 +6,7 @@ engine = create_async_engine(
     settings.async_database_url,
     echo=settings.DEBUG,
     future=True,
+    connect_args=settings.async_connect_args,
 )
 
 # Session factory
