@@ -1,7 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.config import settings 
+from app.config import settings
+from app.api import auth, users
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -10,7 +11,7 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
 )
- 
+
 # ------------------------------------------------------------------
 # CORS — allow the React frontend to talk to this API
 # ------------------------------------------------------------------
@@ -21,6 +22,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ------------------------------------------------------------------
+# Routers
+# ------------------------------------------------------------------
+app.include_router(auth.router)
+app.include_router(users.router)
 
 
 # ------------------------------------------------------------------
@@ -43,4 +50,4 @@ async def root():
     return {
         "message": f"Welcome to {settings.APP_NAME} API 🐝",
         "docs": "/docs",
-    } 
+    }

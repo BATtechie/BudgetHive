@@ -9,6 +9,11 @@ class Settings(BaseSettings):
     DEBUG: bool = True
     DATABASE_URL: str = "postgresql+asyncpg://postgres:password@localhost:5432/budgethive"
 
+    # Auth / JWT
+    JWT_SECRET_KEY: str = "CHANGE_ME_IN_PRODUCTION"
+    JWT_ALGORITHM: str = "HS256"
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
@@ -20,10 +25,14 @@ class Settings(BaseSettings):
         if url.startswith("postgresql://"):
             url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
 
-        parsed = urlparse(url)
-        query = parse_qsl(parsed.query, keep_blank_values=True)
+        base, _, query_str = url.partition("?")
+        if not query_str:
+            return url
+
+        query = parse_qsl(query_str, keep_blank_values=True)
         cleaned_query = [(k, v) for k, v in query if k not in {"sslmode", "channel_binding"}]
-        return urlunparse(parsed._replace(query=urlencode(cleaned_query)))
+        cleaned_query_str = urlencode(cleaned_query)
+        return f"{base}?{cleaned_query_str}" if cleaned_query_str else base
 
     @property
     def async_connect_args(self) -> dict:
@@ -36,4 +45,4 @@ class Settings(BaseSettings):
         return {}
 
 
-settings = Settings()
+settings = Settings() 
