@@ -1,6 +1,10 @@
 # LangGraph agent definitions
 # A1-A5 specialist agents, A6 Final Judge, and Orchestrator
 
+from app.agents.financial_agent import (
+    FinancialEvaluation,
+    evaluate_financials,
+)
 from app.agents.need_agent import (
     NeedClassification,
     NeedEvaluation,
@@ -13,6 +17,8 @@ from app.agents.need_agent import (
 )
 
 __all__ = [
+    "FinancialEvaluation",
+    "evaluate_financials",
     "NeedClassification",
     "NeedEvaluation",
     "NeedQuestions",

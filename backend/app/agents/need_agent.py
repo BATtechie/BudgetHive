@@ -15,7 +15,8 @@ import logging
 from enum import Enum
 from typing import List, Optional, Dict
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from pydantic import BaseModel, Field
 
 from app.config import settings
@@ -137,18 +138,14 @@ Critical rules:
 
 
 # ------------------------------------------------------------------
-# Helper — configure and return a Gemini model
+# Helper — return a GenAI Client
 # ------------------------------------------------------------------
-def _get_model(system_prompt: str) -> Optional[genai.GenerativeModel]:
+def _get_client() -> Optional[genai.Client]:
     key = settings.GEMINI_API_KEY
     if not key or key == "your_gemini_api_key_here":
         logger.warning("GEMINI_API_KEY not configured.")
         return None
-    genai.configure(api_key=key)
-    return genai.GenerativeModel(
-        model_name="gemini-2.5-flash",
-        system_instruction=system_prompt,
-    )
+    return genai.Client(api_key=key)
 
 
 # ------------------------------------------------------------------
@@ -173,8 +170,8 @@ def generate_questions(
         Q4: "Is there anything specific about your situation that makes
               you feel you need these right now?"
     """
-    model = _get_model(_QUESTION_SYSTEM_PROMPT)
-    if model is None:
+    client = _get_client()
+    if client is None:
         return _FALLBACK_QUESTIONS
 
     prompt = f"""
@@ -197,9 +194,11 @@ Return JSON in this exact format:
 """.strip()
 
     try:
-        response = model.generate_content(
-            prompt,
-            generation_config=genai.GenerationConfig(
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=_QUESTION_SYSTEM_PROMPT,
                 response_mime_type="application/json",
                 temperature=0.4,
             ),
@@ -237,8 +236,8 @@ def evaluate_need_from_answers(
           "Is there urgency?":                   "Kind of — I have a big presentation next week"
         }
     """
-    model = _get_model(_EVAL_SYSTEM_PROMPT)
-    if model is None:
+    client = _get_client()
+    if client is None:
         return _FALLBACK_EVALUATION
 
     # Format answers into a readable block
@@ -266,9 +265,11 @@ Return JSON in this exact format:
 """.strip()
 
     try:
-        response = model.generate_content(
-            prompt,
-            generation_config=genai.GenerationConfig(
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=_EVAL_SYSTEM_PROMPT,
                 response_mime_type="application/json",
                 temperature=0.2,
             ),
@@ -302,8 +303,8 @@ def evaluate_need_from_history(
          Bluetooth speaker (kept, used daily), Smart watch (returned),
          USB hub (kept, used weekly). Average regret: 25/100."
     """
-    model = _get_model(_EVAL_SYSTEM_PROMPT)
-    if model is None:
+    client = _get_client()
+    if client is None:
         return _FALLBACK_EVALUATION
 
     prompt = f"""
@@ -326,9 +327,11 @@ Return JSON in this exact format:
 """.strip()
 
     try:
-        response = model.generate_content(
-            prompt,
-            generation_config=genai.GenerationConfig(
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=_EVAL_SYSTEM_PROMPT,
                 response_mime_type="application/json",
                 temperature=0.2,
             ),
