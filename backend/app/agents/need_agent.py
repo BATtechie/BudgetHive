@@ -20,6 +20,7 @@ from google.genai import types
 from pydantic import BaseModel, Field
 
 from app.config import settings
+from app.agents.llm_utils import generate_content_with_fallback
 
 logger = logging.getLogger(__name__)
 
@@ -194,14 +195,12 @@ Return JSON in this exact format:
 """.strip()
 
     try:
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
+        response = generate_content_with_fallback(
+            client,
             contents=prompt,
-            config=types.GenerateContentConfig(
-                system_instruction=_QUESTION_SYSTEM_PROMPT,
-                response_mime_type="application/json",
-                temperature=0.4,
-            ),
+            system_instruction=_QUESTION_SYSTEM_PROMPT,
+            response_mime_type="application/json",
+            temperature=0.4,
         )
         data = json.loads(response.text.strip())
         return NeedQuestions(**data)
@@ -265,14 +264,12 @@ Return JSON in this exact format:
 """.strip()
 
     try:
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
+        response = generate_content_with_fallback(
+            client,
             contents=prompt,
-            config=types.GenerateContentConfig(
-                system_instruction=_EVAL_SYSTEM_PROMPT,
-                response_mime_type="application/json",
-                temperature=0.2,
-            ),
+            system_instruction=_EVAL_SYSTEM_PROMPT,
+            response_mime_type="application/json",
+            temperature=0.2,
         )
         data = json.loads(response.text.strip())
         return NeedEvaluation(**data)
@@ -327,14 +324,12 @@ Return JSON in this exact format:
 """.strip()
 
     try:
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
+        response = generate_content_with_fallback(
+            client,
             contents=prompt,
-            config=types.GenerateContentConfig(
-                system_instruction=_EVAL_SYSTEM_PROMPT,
-                response_mime_type="application/json",
-                temperature=0.2,
-            ),
+            system_instruction=_EVAL_SYSTEM_PROMPT,
+            response_mime_type="application/json",
+            temperature=0.2,
         )
         data = json.loads(response.text.strip())
         return NeedEvaluation(**data)

@@ -9,11 +9,15 @@ class Settings(BaseSettings):
     DEBUG: bool = True
     DATABASE_URL: str = "postgresql+asyncpg://postgres:password@localhost:5432/budgethive"
 
+    # AI / LLM
+    GEMINI_API_KEY: str = "your_gemini_api_key_here"
+    GEMINI_MODEL: str = "gemini-2.0-flash"
+    GEMINI_MODEL_FALLBACKS: str = "gemini-2.0-flash-lite"
+
     # Auth / JWT
     JWT_SECRET_KEY: str = "CHANGE_ME_IN_PRODUCTION"
     JWT_ALGORITHM: str = "HS256"
-    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
-    GEMINI_API_KEY: str = "your_gemini_api_key_here"
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days 
 
     class Config:
         env_file = ".env"

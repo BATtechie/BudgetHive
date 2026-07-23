@@ -7,6 +7,7 @@ from google.genai import types
 from pydantic import BaseModel, Field
 
 from app.config import settings
+from app.agents.llm_utils import generate_content_with_fallback
 
 logger = logging.getLogger(__name__)
 
@@ -145,17 +146,13 @@ Return JSON in this exact format:
 """.strip()
 
     try:
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
+        response = generate_content_with_fallback(
+            client,
             contents=prompt,
-            config=types.GenerateContentConfig(
-                system_instruction=_FINANCE_SYSTEM_PROMPT,
-                thinking_config=types.ThinkingConfig(
-                    thinking_budget=1024,
-                ),
-                response_mime_type="application/json",
-                temperature=0.3,
-            ),
+            system_instruction=_FINANCE_SYSTEM_PROMPT,
+            response_mime_type="application/json",
+            temperature=0.3,
+            thinking_budget=1024,
         )
         data = json.loads(response.text.strip())
         
