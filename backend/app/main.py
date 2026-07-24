@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.api import auth, users
+from app.api import auth, users, deal_hunter
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -28,6 +28,8 @@ app.add_middleware(
 # ------------------------------------------------------------------
 app.include_router(auth.router)
 app.include_router(users.router)
+app.include_router(deal_hunter.router)
+
 
 
 # ------------------------------------------------------------------
