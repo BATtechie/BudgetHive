@@ -1,3 +1,7 @@
+import pytest
+
+pytest.skip("Legacy demo test kept out of collection; use backend/test/test_deal_hunter_agent.py", allow_module_level=True)
+
 import sys
 import json
 from pathlib import Path

@@ -1,9 +1,14 @@
 import os
 import sys
+from pathlib import Path
 from dotenv import load_dotenv
 
+# Ensure backend path is in sys.path
+backend_dir = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(backend_dir))
+
 # Load env variables from backend/.env
-load_dotenv()
+load_dotenv(dotenv_path=backend_dir / ".env")
 
 from app.agents.financial_agent import evaluate_financials
 

@@ -1,8 +1,9 @@
 from typing import List, Optional
+
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 
-from app.agents.deal_hunter_agent import DealHunterEvaluation, run_deal_hunter_agent
+from app.agents.deal_hunter_agent import DealHunterResult, find_best_deal
 
 router = APIRouter(prefix="/api/v1/deal-hunter", tags=["Deal Hunter Agent"])
 
@@ -27,7 +28,7 @@ class DealHunterRequest(BaseModel):
 
 @router.post(
     "/evaluate",
-    response_model=DealHunterEvaluation,
+    response_model=DealHunterResult,
     status_code=status.HTTP_200_OK,
     summary="Evaluate purchase deals across Indian e-commerce platforms",
 )
@@ -44,10 +45,10 @@ async def evaluate_deal(request: DealHunterRequest):
         )
 
     try:
-        result = run_deal_hunter_agent(
-            product_query=request.product_input.strip(),
+        result = await find_best_deal(
+            request.product_input.strip(),
             user_banks=request.user_banks,
-            max_budget=request.max_budget,
+            disposable_budget=request.max_budget,
         )
         return result
     except Exception as exc:

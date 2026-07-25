@@ -17,11 +17,11 @@ from app.agents.need_agent import (
 )
 
 from app.agents.deal_hunter_agent import (
-    DealBadge,
-    BankOffer,
-    CouponOrCashback,
-    PlatformDealOption,
-    DealHunterEvaluation,
+    OfferDetail,
+    DealHunterResult,
+    PriceSourceProvider,
+    WebPriceSourceProvider,
+    find_best_deal,
     run_deal_hunter_agent,
 )
 
@@ -36,11 +36,10 @@ __all__ = [
     "evaluate_need_from_answers",
     "evaluate_need_from_history",
     "run_need_agent",
-    "DealBadge",
-    "BankOffer",
-    "CouponOrCashback",
-    "PlatformDealOption",
-    "DealHunterEvaluation",
+    "OfferDetail",
+    "DealHunterResult",
+    "PriceSourceProvider",
+    "WebPriceSourceProvider",
+    "find_best_deal",
     "run_deal_hunter_agent",
 ]
-
