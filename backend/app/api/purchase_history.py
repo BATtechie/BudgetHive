@@ -92,6 +92,28 @@ async def create_purchase_history(
     return history
 
 
+@router.get("", response_model=list[PurchaseHistoryResponse])
+async def list_purchase_histories(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[PurchaseHistory]:
+    result = await db.execute(
+        select(PurchaseHistory)
+        .where(PurchaseHistory.user_id == current_user.id)
+        .order_by(PurchaseHistory.created_at.desc())
+    )
+    return result.scalars().all()
+
+
+@router.get("/due-checkins", response_model=list[PurchaseHistoryResponse])
+async def get_due_checkins(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[PurchaseHistory]:
+    return await find_due_checkin_notifications(db, user_id=current_user.id)
+
+
+
 @router.patch("/{history_id}/checkin", response_model=PurchaseHistoryResponse)
 async def checkin_purchase_history(
     history_id: UUID,

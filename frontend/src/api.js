@@ -43,4 +43,12 @@ export const api = {
     request("/api/v1/deal-hunter/evaluate", { method: "POST", body }),
   alternativesEvaluate: (body) =>
     request("/api/v1/alternatives/evaluate", { method: "POST", body }),
+  createPurchaseHistory: (body, token) =>
+    request("/api/v1/purchase-history", { method: "POST", body, token }),
+  getPurchaseHistory: (token) =>
+    request("/api/v1/purchase-history", { token }),
+  getDueCheckins: (token) =>
+    request("/api/v1/purchase-history/due-checkins", { token }),
+  checkinPurchaseHistory: (id, body, token) =>
+    request(`/api/v1/purchase-history/${id}/checkin`, { method: "PATCH", body, token }),
 };
