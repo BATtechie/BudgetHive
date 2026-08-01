@@ -7,6 +7,7 @@ const TABS = [
   { id: "financial", label: "A1 Financial", icon: "💰" },
   { id: "need", label: "A2 Need", icon: "🎯" },
   { id: "deal", label: "A3 Deal Hunter", icon: "🏷️" },
+  { id: "alternatives", label: "A4 Alternatives", icon: "🔄" },
 ];
 
 function ResultPanel({ loading, error, result }) {
@@ -461,6 +462,75 @@ function NeedTab() {
   );
 }
 
+function AlternativesTab() {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [result, setResult] = useState(null);
+  const [form, setForm] = useState({
+    product_name: "Samsung Galaxy S25 FE",
+    category: "Smartphones",
+    price: 55000,
+    budget_ceiling: 70000,
+    primary_use_case: "Flagship-like performance and camera",
+  });
+
+  const set = (key) => (e) => setForm({ ...form, [key]: e.target.value });
+
+  const run = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const body = {
+        product_name: form.product_name,
+        category: form.category,
+        price: Number(form.price),
+      };
+      if (form.budget_ceiling) body.budget_ceiling = Number(form.budget_ceiling);
+      if (form.primary_use_case) body.primary_use_case = form.primary_use_case;
+      setResult(await api.alternativesEvaluate(body));
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <section className="panel">
+      <div className="panel-header">
+        <h2>A4 — Alternatives Agent</h2>
+        <p>Find lower-cost alternatives in the same price band for the product you are evaluating.</p>
+      </div>
+
+      <div className="form-grid">
+        <Field label="Product Name">
+          <input value={form.product_name} onChange={set("product_name")} />
+        </Field>
+        <Field label="Category">
+          <input value={form.category} onChange={set("category")} />
+        </Field>
+        <Field label="Original Price (₹)">
+          <input type="number" value={form.price} onChange={set("price")} />
+        </Field>
+        <Field label="Budget Ceiling (₹)">
+          <input type="number" value={form.budget_ceiling} onChange={set("budget_ceiling")} />
+        </Field>
+        <Field label="Primary Use Case">
+          <input value={form.primary_use_case} onChange={set("primary_use_case")} />
+        </Field>
+      </div>
+
+      <div className="btn-row">
+        <button className="btn primary" onClick={run} disabled={loading}>
+          Find Alternatives
+        </button>
+      </div>
+
+      <ResultPanel loading={loading} error={error} result={result} />
+    </section>
+  );
+}
+
 function DealTab() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -621,6 +691,7 @@ export default function App() {
         {tab === "financial" && <FinancialTab token={token} user={user} />}
         {tab === "need" && <NeedTab />}
         {tab === "deal" && <DealTab />}
+        {tab === "alternatives" && <AlternativesTab />}
       </main>
 
       <footer className="footer">

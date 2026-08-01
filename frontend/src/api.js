@@ -41,4 +41,6 @@ export const api = {
   needEvaluate: (body) => request("/api/v1/need/evaluate", { method: "POST", body }),
   dealHunterEvaluate: (body) =>
     request("/api/v1/deal-hunter/evaluate", { method: "POST", body }),
+  alternativesEvaluate: (body) =>
+    request("/api/v1/alternatives/evaluate", { method: "POST", body }),
 };

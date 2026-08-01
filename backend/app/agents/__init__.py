@@ -24,6 +24,12 @@ from app.agents.deal_hunter_agent import (
     find_best_deal,
     run_deal_hunter_agent,
 )
+from app.agents.alternative_agent import (
+    Alternative,
+    AlternativeType,
+    AlternativesEvaluation,
+    run_alternatives_agent,
+)
 
 __all__ = [
     "FinancialEvaluation",
@@ -42,4 +48,8 @@ __all__ = [
     "WebPriceSourceProvider",
     "find_best_deal",
     "run_deal_hunter_agent",
+    "Alternative",
+    "AlternativeType",
+    "AlternativesEvaluation",
+    "run_alternatives_agent",
 ]

@@ -20,6 +20,7 @@ class PurchaseHistory(TimestampMixin, Base):
     is_returned = Column(Boolean, default=False)
     is_resold = Column(Boolean, default=False)
     regret_score = Column(Integer, nullable=True)  # 0-100, self-reported
+    checkin_sent = Column(Boolean, default=False, nullable=False)
     verdict_id = Column(UUID(as_uuid=True), ForeignKey("verdict_history.id", ondelete="SET NULL"), nullable=True, index=True)
 
     # Relationships
