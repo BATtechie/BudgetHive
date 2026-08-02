@@ -40,3 +40,16 @@ async def get_current_user(
         raise credentials_exception
 
     return user
+
+
+async def get_optional_user(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
+    db: AsyncSession = Depends(get_db),
+) -> Optional[User]:
+    if credentials is None:
+        return None
+    user_id = decode_access_token(credentials.credentials)
+    if user_id is None:
+        return None
+    result = await db.execute(select(User).where(User.id == user_id))
+    return result.scalar_one_or_none()

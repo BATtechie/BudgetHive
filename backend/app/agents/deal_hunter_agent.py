@@ -86,6 +86,7 @@ _OFFERS_KEYWORDS = (
     "offer",
     "save",
     "emi",
+    "% off",
 )
 
 _PLATFORM_DOMAINS = {
@@ -154,6 +155,58 @@ class PriceHistoryEntry:
 
 PRICE_HISTORY_CACHE: defaultdict[str, list[PriceHistoryEntry]] = defaultdict(list)
 _HISTORY_WINDOW = timedelta(days=90)
+
+
+async def _record_price_history_db(
+    db: object,
+    product_identifier: str,
+    listings: Sequence["ScrapedListing"],
+    checked_at: datetime,
+) -> None:
+    from app.models.price_snapshot import PriceSnapshot
+    for listing in listings:
+        if listing.listed_price is None or listing.listed_price <= 0:
+            continue
+        db.add(PriceSnapshot(
+            product_identifier=product_identifier,
+            price=float(listing.listed_price),
+            platform=listing.platform,
+            checked_at=checked_at,
+        ))
+    await db.flush()
+
+
+async def _load_history_summary_db(
+    db: object,
+    product_identifier: str,
+    now: datetime | None = None,
+) -> PriceHistorySummary:
+    from sqlalchemy import select, func as sa_func
+    from app.models.price_snapshot import PriceSnapshot
+
+    cutoff = (now or datetime.now(timezone.utc)) - _HISTORY_WINDOW
+    stmt = (
+        select(
+            sa_func.count(PriceSnapshot.id),
+            sa_func.avg(PriceSnapshot.price),
+            sa_func.min(PriceSnapshot.price),
+            sa_func.stddev_pop(PriceSnapshot.price),
+        )
+        .where(PriceSnapshot.product_identifier == product_identifier)
+        .where(PriceSnapshot.checked_at >= cutoff)
+        .where(PriceSnapshot.price > 0)
+    )
+    result = await db.execute(stmt)
+    row = result.one()
+    cnt, avg_price, min_price, std_price = row
+    if not cnt:
+        return PriceHistorySummary()
+    return PriceHistorySummary(
+        sample_count=cnt,
+        average_price=float(avg_price) if avg_price is not None else None,
+        lowest_price=float(min_price) if min_price is not None else None,
+        stddev_price=float(std_price) if std_price is not None else 0.0,
+    )
 
 
 class PriceSourceProvider(ABC):
@@ -264,6 +317,118 @@ class WebPriceSourceProvider(PriceSourceProvider):
             return None
 
 
+class PlaywrightPriceSourceProvider(WebPriceSourceProvider):
+    _browser = None
+    _playwright = None
+
+    def __init__(self, timeout_ms: int = 15_000):
+        self._timeout_ms = timeout_ms
+
+    async def _ensure_browser(self):
+        if self._browser is None:
+            from playwright.async_api import async_playwright
+            self._playwright = await async_playwright().start()
+            self._browser = await self._playwright.chromium.launch(headless=True)
+
+    async def _safe_fetch_text(self, url: str) -> str | None:
+        try:
+            await self._ensure_browser()
+            context = await self._browser.new_context(
+                user_agent=_DEFAULT_HEADERS["User-Agent"],
+                locale="en-IN",
+            )
+            page = await context.new_page()
+            try:
+                await page.goto(url, wait_until="domcontentloaded", timeout=self._timeout_ms)
+                await page.wait_for_timeout(2000)
+                return await page.content()
+            finally:
+                await context.close()
+        except Exception as exc:
+            logger.debug("Playwright fetch failed for %s: %s", url, exc)
+            return None
+
+    async def close(self):
+        if self._browser:
+            await self._browser.close()
+            self._browser = None
+        if self._playwright:
+            await self._playwright.stop()
+            self._playwright = None
+
+    async def resolve_input(self, product_name_or_url: str) -> ResolvedProductInput:
+        raw_input = product_name_or_url.strip()
+        if _looks_like_url(raw_input):
+            platform = _platform_from_url(raw_input)
+            html = await self._safe_fetch_text(raw_input)
+            title, price, offers = _parse_product_page(html or "", raw_input, platform)
+            product_name = title or _slug_to_title(urlparse(raw_input).path) or raw_input
+            product_identifier = _canonical_product_key(product_name)
+            seed_listing = None
+            if title or price is not None or offers:
+                seed_listing = ScrapedListing(
+                    platform=platform or _platform_from_url(raw_input) or "Unknown",
+                    title=product_name,
+                    url=raw_input,
+                    listed_price=price,
+                    source_page=raw_input,
+                    exact_match=True,
+                    offers=offers,
+                    product_identifier=product_identifier,
+                )
+            return ResolvedProductInput(
+                raw_input=raw_input,
+                input_type="URL",
+                product_name=product_name,
+                search_query=product_name,
+                product_identifier=product_identifier,
+                source_platform=platform,
+                source_url=raw_input,
+                seed_listing=seed_listing,
+            )
+
+        product_name = raw_input
+        return ResolvedProductInput(
+            raw_input=raw_input,
+            input_type="PRODUCT_NAME",
+            product_name=product_name,
+            search_query=product_name,
+            product_identifier=_canonical_product_key(product_name),
+        )
+
+    async def search_platform(self, platform: str, query: str) -> list[ScrapedListing]:
+        listings: list[ScrapedListing] = []
+        for build_url in _PLATFORM_SEARCH_URLS.get(platform, []):
+            search_url = build_url(query)
+            html = await self._safe_fetch_text(search_url)
+            if not html:
+                continue
+            listings.extend(_parse_search_results(html, search_url, platform))
+            if listings:
+                break
+        return _dedupe_listings(listings)
+
+    async def fetch_listing(self, listing: ScrapedListing) -> ScrapedListing:
+        html = await self._safe_fetch_text(listing.url)
+        if not html:
+            return listing
+
+        title, price, offers = _parse_product_page(html, listing.url, listing.platform)
+        merged_offers = listing.offers[:]
+        merged_offers.extend(offers)
+        return ScrapedListing(
+            platform=listing.platform,
+            title=title or listing.title,
+            url=listing.url,
+            listed_price=price if price is not None else listing.listed_price,
+            source_page=listing.source_page or listing.url,
+            card_text=listing.card_text,
+            exact_match=listing.exact_match,
+            offers=_dedupe_offers(merged_offers),
+            product_identifier=listing.product_identifier or _canonical_product_key(title or listing.title),
+        )
+
+
 async def find_best_deal(
     product_name_or_url: str,
     *,
@@ -280,6 +445,7 @@ async def find_best_deal(
     cannot be verified, the score drops and the reasoning says so.
     """
     owned_client: httpx.AsyncClient | None = None
+    owned_playwright_provider: PlaywrightPriceSourceProvider | None = None
     resolved: ResolvedProductInput | None = None
     provider_obj = provider
     priced_listings: list[ScrapedListing] = []
@@ -287,8 +453,13 @@ async def find_best_deal(
 
     try:
         if provider_obj is None:
-            owned_client = httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT, headers=_DEFAULT_HEADERS, follow_redirects=True)
-            provider_obj = WebPriceSourceProvider(owned_client)
+            try:
+                owned_playwright_provider = PlaywrightPriceSourceProvider()
+                provider_obj = owned_playwright_provider
+            except Exception:
+                logger.debug("Playwright unavailable, falling back to httpx")
+                owned_client = httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT, headers=_DEFAULT_HEADERS, follow_redirects=True)
+                provider_obj = WebPriceSourceProvider(owned_client)
 
         resolved = await provider_obj.resolve_input(product_name_or_url)
 
@@ -303,7 +474,7 @@ async def find_best_deal(
         }
         search_results = await asyncio.gather(*search_tasks.values(), return_exceptions=True)
 
-        for platform, result in zip(search_tasks.keys(), search_results, strict=True):
+        for platform, result in zip(search_tasks.keys(), search_results):
             if isinstance(result, Exception):
                 logger.debug("Search failed for %s: %s", platform, result)
                 continue
@@ -342,7 +513,7 @@ async def find_best_deal(
 
         final_listings: list[ScrapedListing] = []
         source_errors: list[str] = []
-        for platform, result in zip(detail_tasks.keys(), detail_results, strict=True):
+        for platform, result in zip(detail_tasks.keys(), detail_results):
             if isinstance(result, Exception):
                 logger.debug("Detail fetch failed for %s: %s", platform, result)
                 source_errors.append(platform)
@@ -379,7 +550,10 @@ async def find_best_deal(
                 matched_platforms=[listing.platform for listing in final_listings],
             )
 
-        history = _load_history_summary(resolved.product_identifier, now)
+        if db is not None:
+            history = await _load_history_summary_db(db, resolved.product_identifier, now)
+        else:
+            history = _load_history_summary(resolved.product_identifier, now)
 
         priced_records = [
             {
@@ -446,7 +620,7 @@ async def find_best_deal(
             last_checked_at=now,
         )
 
-    except Exception as exc:  # pragma: no cover - final safety net
+    except Exception as exc:
         logger.exception("Deal Hunter failed: %s", exc)
         now = datetime.now(timezone.utc)
         fallback_name = resolved.product_name if resolved is not None else product_name_or_url.strip()
@@ -460,7 +634,16 @@ async def find_best_deal(
         )
     finally:
         if resolved is not None and priced_listings:
-            _record_price_history(resolved.product_identifier, priced_listings, now)
+            if db is not None:
+                try:
+                    await _record_price_history_db(db, resolved.product_identifier, priced_listings, now)
+                except Exception:
+                    logger.debug("DB price-history write failed; falling back to in-memory")
+                    _record_price_history(resolved.product_identifier, priced_listings, now)
+            else:
+                _record_price_history(resolved.product_identifier, priced_listings, now)
+        if owned_playwright_provider is not None:
+            await owned_playwright_provider.close()
         if owned_client is not None:
             await owned_client.aclose()
 
@@ -776,10 +959,42 @@ def _parse_amazon_search_results(soup: BeautifulSoup, page_url: str) -> list[Scr
     for card in soup.select("div[data-component-type='s-search-result']"):
         title_node = card.select_one("h2 a span") or card.select_one("h2 span")
         link_node = card.select_one("h2 a")
-        if not title_node or not link_node:
+
+        title = ""
+        url = ""
+        brand = ""
+        if title_node and link_node:
+            title = _clean_text(title_node.get_text(" ", strip=True))
+            url = urljoin(page_url, link_node.get("href", ""))
+        else:
+            brand_span = card.select_one("h2 span")
+            if brand_span:
+                brand = _clean_text(brand_span.get_text(" ", strip=True))
+            first_link = None
+            for a in card.select("a[href*='/dp/']"):
+                link_text = _clean_text(a.get_text(" ", strip=True))
+                if len(link_text) > 20:
+                    title = link_text
+                    first_link = a
+                    break
+            if not title:
+                aria_el = card.find(attrs={"aria-label": True})
+                if aria_el:
+                    label = aria_el.get("aria-label", "")
+                    if len(label) > 20:
+                        title = _clean_text(label)
+            if brand and title and not title.lower().startswith(brand.lower()):
+                title = f"{brand} {title}"
+            if first_link is not None:
+                url = urljoin(page_url, first_link.get("href", ""))
+            elif not url:
+                dp_link = card.select_one("a[href*='/dp/']")
+                if dp_link:
+                    url = urljoin(page_url, dp_link.get("href", ""))
+
+        if not title or not url:
             continue
-        title = _clean_text(title_node.get_text(" ", strip=True))
-        url = urljoin(page_url, link_node.get("href", ""))
+
         price = _extract_price_from_container(card)
         listings.append(
             ScrapedListing(
@@ -797,6 +1012,13 @@ def _parse_amazon_search_results(soup: BeautifulSoup, page_url: str) -> list[Scr
     return _parse_generic_search_results(soup, page_url, "Amazon.in")
 
 
+_NAV_NOISE = re.compile(
+    r"results?\s+for|sort\s+by|sign\s+in|deliver(ing)?\s+to|filter|"
+    r"explore\s+plus|categories|sponsored",
+    re.IGNORECASE,
+)
+
+
 def _parse_generic_search_results(soup: BeautifulSoup, page_url: str, platform: str) -> list[ScrapedListing]:
     listings: list[ScrapedListing] = []
     seen: set[tuple[str, str]] = set()
@@ -805,6 +1027,8 @@ def _parse_generic_search_results(soup: BeautifulSoup, page_url: str, platform: 
         if not text or len(text) < 15:
             continue
         if not _contains_price(text):
+            continue
+        if _NAV_NOISE.search(text[:120]):
             continue
 
         title = _extract_title_from_container(container)
@@ -970,64 +1194,36 @@ def _parse_offer_window(window: str, current_price: float | None) -> list[OfferD
     pct_match = re.search(r"(\d+(?:\.\d+)?)\s*%", window)
     coupon_match = re.search(r"(?:coupon|code)\s*(?:code)?[:\s]*([A-Z0-9_-]{4,})", window, re.IGNORECASE)
 
-    if "cashback" in lower:
-        offer_type = "cashback"
-        discount_value = None
-        discount_unit = None
-        if pct_match and current_price:
-            discount_value = round(current_price * (float(pct_match.group(1)) / 100.0), 2)
-            discount_unit = "INR"
-        elif amount_match:
-            discount_value = _parse_price(amount_match.group(1))
-            discount_unit = "INR"
-        elif cap_match:
-            discount_value = _parse_price(cap_match.group(1))
-            discount_unit = "INR"
-        offers.append(
-            OfferDetail(
-                offer_type=offer_type,
-                issuer=issuer or "Cashback",
-                discount_value=discount_value,
-                discount_unit=discount_unit,
-                conditions=window,
-            )
-        )
+    discount_value = None
+    discount_unit = None
+    if pct_match and current_price:
+        discount_value = round(current_price * (float(pct_match.group(1)) / 100.0), 2)
+        discount_unit = "INR"
+    elif amount_match:
+        discount_value = _parse_price(amount_match.group(1))
+        discount_unit = "INR"
+    elif cap_match:
+        discount_value = _parse_price(cap_match.group(1))
+        discount_unit = "INR"
 
     if coupon_match:
         code = coupon_match.group(1).strip()
-        discount_value = None
-        discount_unit = None
+        coupon_value = discount_value
+        coupon_unit = discount_unit
         if amount_match:
-            discount_value = _parse_price(amount_match.group(1))
-            discount_unit = "INR"
-        elif pct_match and current_price:
-            discount_value = round(current_price * (float(pct_match.group(1)) / 100.0), 2)
-            discount_unit = "INR"
-        elif cap_match:
-            discount_value = _parse_price(cap_match.group(1))
-            discount_unit = "INR"
+            coupon_value = _parse_price(amount_match.group(1))
+            coupon_unit = "INR"
         offers.append(
             OfferDetail(
                 offer_type="coupon",
                 issuer=code,
-                discount_value=discount_value,
-                discount_unit=discount_unit,
+                discount_value=coupon_value,
+                discount_unit=coupon_unit,
                 conditions=window,
             )
         )
 
     if "bank" in lower or "card" in lower or "credit" in lower or "debit" in lower:
-        discount_value = None
-        discount_unit = None
-        if pct_match and current_price:
-            discount_value = round(current_price * (float(pct_match.group(1)) / 100.0), 2)
-            discount_unit = "INR"
-        elif amount_match:
-            discount_value = _parse_price(amount_match.group(1))
-            discount_unit = "INR"
-        elif cap_match:
-            discount_value = _parse_price(cap_match.group(1))
-            discount_unit = "INR"
         offers.append(
             OfferDetail(
                 offer_type="bank_discount",
@@ -1037,21 +1233,17 @@ def _parse_offer_window(window: str, current_price: float | None) -> list[OfferD
                 conditions=window,
             )
         )
-
-    if "discount" in lower and not any(
-        offer.offer_type in {"bank_discount", "instant_discount"} for offer in offers
-    ):
-        discount_value = None
-        discount_unit = None
-        if pct_match and current_price:
-            discount_value = round(current_price * (float(pct_match.group(1)) / 100.0), 2)
-            discount_unit = "INR"
-        elif amount_match:
-            discount_value = _parse_price(amount_match.group(1))
-            discount_unit = "INR"
-        elif cap_match:
-            discount_value = _parse_price(cap_match.group(1))
-            discount_unit = "INR"
+    elif "cashback" in lower:
+        offers.append(
+            OfferDetail(
+                offer_type="cashback",
+                issuer=issuer or "Cashback",
+                discount_value=discount_value,
+                discount_unit=discount_unit,
+                conditions=window,
+            )
+        )
+    elif "discount" in lower:
         offers.append(
             OfferDetail(
                 offer_type="instant_discount",
@@ -1077,10 +1269,15 @@ def _extract_issuer(window: str) -> str | None:
         r"(Amazon Pay(?: Balance)?)",
         r"(select Credit Cards?)",
     ]
+    best_match = None
+    best_pos = len(window)
     for pattern in patterns:
         match = re.search(pattern, window, re.IGNORECASE)
-        if match:
-            return _clean_text(match.group(1))
+        if match and match.start() < best_pos:
+            best_pos = match.start()
+            best_match = _clean_text(match.group(1))
+    if best_match:
+        return best_match
 
     with_match = re.search(r"\bwith\s+([^.;,\n]+)", window, re.IGNORECASE)
     if with_match:
@@ -1229,10 +1426,21 @@ def _match_strength(query: str, candidate: str) -> int:
     return score
 
 
+_ACCESSORY_INDICATORS = re.compile(
+    r"\b(case|cover|pouch|sleeve|skin|protector|guard|charger|cable|adapter|"
+    r"holder|stand|mount|strap|band|tempered\s+glass|screen\s+guard|"
+    r"back\s+cover|flip\s+cover)\b.*\b(for|compatible\s+with)\b",
+    re.IGNORECASE,
+)
+
+
 def _is_exact_match(query: str, candidate_title: str, query_identifier: str) -> bool:
     query_tokens = _significant_tokens(query)
     candidate_tokens = _significant_tokens(candidate_title)
     if not query_tokens or not candidate_tokens:
+        return False
+
+    if _ACCESSORY_INDICATORS.search(candidate_title):
         return False
 
     if _canonical_product_key(candidate_title) == query_identifier:

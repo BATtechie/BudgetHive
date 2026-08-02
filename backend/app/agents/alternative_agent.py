@@ -2,11 +2,9 @@
 A4 — Alternatives Agent
 """
 
-import asyncio
 import json
 import logging
 import re
-import threading
 from enum import Enum
 from typing import Any, List, Optional
 
@@ -210,86 +208,15 @@ def _build_deterministic_alternatives(
     budget_ceiling: Optional[float] = None,
     primary_use_case: Optional[str] = None,
 ) -> AlternativesEvaluation:
-    normalized_product = (product_name or "").strip().lower()
-    ceiling = budget_ceiling or price
-    ceiling = max(ceiling, price * 0.8)
-
-    if "samsung" in normalized_product and "s25" in normalized_product:
-        candidates = [
-            Alternative(
-                product_name="Vivo V70",
-                price=38999.0,
-                savings_amount=round(max(0.0, price - 38999.0), 2),
-                spec_difference="Cheaper alternative with strong camera and battery focus; it trades a little premium finish for much better price-to-value.",
-
-                alternative_type=AlternativeType.DIFFERENT_BRAND,
-            ),
-            Alternative(
-                product_name="Nothing 4a Pro",
-                price=42999.0,
-                savings_amount=round(max(0.0, price - 42999.0), 2),
-                spec_difference="Compact, clean software experience with a more affordable price point, but slightly less premium hardware.",
-                alternative_type=AlternativeType.DIFFERENT_BRAND,
-            ),
-        ]
-    elif "iphone" in normalized_product or "iphone" in category.lower():
-        candidates = [
-            Alternative(
-                product_name="Google Pixel 8a",
-                price=39999.0,
-                savings_amount=round(max(0.0, price - 39999.0), 2),
-                spec_difference="Lower price point with strong camera performance, but a different ecosystem and less premium display.",
-                alternative_type=AlternativeType.DIFFERENT_BRAND,
-            ),
-            Alternative(
-                product_name="Nothing Phone (2a)",
-                price=26999.0,
-                savings_amount=round(max(0.0, price - 26999.0), 2),
-                spec_difference="More affordable option that trades some premium hardware for a better price-to-value package.",
-                alternative_type=AlternativeType.DIFFERENT_BRAND,
-            ),
-        ]
-    else:
-        candidates = [
-            Alternative(
-                product_name=f"Budget {product_name}",
-                price=max(1000.0, round(price * 0.8, 2)),
-                savings_amount=round(max(0.0, price - max(1000.0, round(price * 0.8, 2))), 2),
-                spec_difference="Lower-cost alternative that keeps the core use case intact while cutting premium features.",
-                alternative_type=AlternativeType.CHEAPER_SAME_SPEC,
-            ),
-            Alternative(
-                product_name=f"Value {product_name}",
-                price=max(1000.0, round(price * 0.9, 2)),
-                savings_amount=round(max(0.0, price - max(1000.0, round(price * 0.9, 2))), 2),
-                spec_difference="Good value option with a slightly slimmer feature set but better price-to-performance ratio.",
-                alternative_type=AlternativeType.DIFFERENT_BRAND,
-            ),
-        ]
-
-    filtered = [
-        alt for alt in candidates
-        if alt.price <= ceiling and alt.price > 0 and alt.price < price * 1.2
-    ]
-    if not filtered:
-        filtered = candidates[:1]
-
-    score = 100.0 - min(90.0, (price - filtered[0].price) / max(price, 1.0) * 100.0)
-    score = round(min(max(score, 0.0), 100.0), 1)
-
-    reasoning = (
-        f"The best alternative under your budget is {filtered[0].product_name} at ₹{filtered[0].price:,.0f}, "
-        f"which saves about ₹{filtered[0].savings_amount:,.0f} versus the original ask."
-    )
     return AlternativesEvaluation(
-        score=score,
-        alternatives=filtered[:3],
-        reasoning=reasoning,
+        score=70.0,
+        alternatives=[],
+        reasoning="No verified alternatives found — live search and AI model were both unavailable.",
         data_source="FALLBACK",
     )
 
 
-def _search_live_web_listings(
+async def _search_live_web_listings(
     product_name: str,
     category: str,
     price: float,
@@ -298,13 +225,14 @@ def _search_live_web_listings(
 ) -> List[Any]:
     query = f"{product_name} {category} price"
     try:
-        response = httpx.get(
-            "https://duckduckgo.com/html/",
-            params={"q": query},
-            timeout=6.0,
-            headers={"User-Agent": "Mozilla/5.0"},
-        )
-        response.raise_for_status()
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                "https://duckduckgo.com/html/",
+                params={"q": query},
+                timeout=6.0,
+                headers={"User-Agent": "Mozilla/5.0"},
+            )
+            response.raise_for_status()
     except Exception as exc:
         logger.warning("Live web search failed: %s", exc)
         return []
@@ -331,7 +259,7 @@ def _search_live_web_listings(
     return listings
 
 
-def run_alternatives_agent(
+async def run_alternatives_agent(
     product_name: str,
     category: str,
     price: float,
@@ -343,12 +271,12 @@ def run_alternatives_agent(
         try:
             resolved = None
             if hasattr(provider, "resolve_input"):
-                resolved = asyncio.run(provider.resolve_input(product_name))
+                resolved = await provider.resolve_input(product_name)
             search_query = getattr(resolved, "search_query", None) or getattr(resolved, "product_name", None) or product_name
             listings: List[Any] = []
             for platform in ["amazon", "flipkart", "croma", "reliance digital"]:
                 if hasattr(provider, "search_platform"):
-                    batch = asyncio.run(provider.search_platform(platform, search_query))
+                    batch = await provider.search_platform(platform, search_query)
                     if batch:
                         listings.extend(batch)
             if not listings:
@@ -362,7 +290,7 @@ def run_alternatives_agent(
             fetched_listings = []
             for listing in listings:
                 if hasattr(provider, "fetch_listing"):
-                    fetched_listings.append(asyncio.run(provider.fetch_listing(listing)))
+                    fetched_listings.append(await provider.fetch_listing(listing))
                 else:
                     fetched_listings.append(listing)
             return _build_live_web_alternatives(
@@ -384,7 +312,7 @@ def run_alternatives_agent(
 
     client = _get_client()
     if client is None:
-        live_listings = _search_live_web_listings(
+        live_listings = await _search_live_web_listings(
             product_name=product_name,
             category=category,
             price=price,

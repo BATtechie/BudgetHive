@@ -16,7 +16,6 @@ from enum import Enum
 from typing import List, Optional, Dict
 
 from google import genai
-from google.genai import types
 from pydantic import BaseModel, Field
 
 from app.config import settings

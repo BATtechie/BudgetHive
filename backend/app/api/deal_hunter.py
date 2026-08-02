@@ -1,9 +1,11 @@
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.deal_hunter_agent import DealHunterResult, find_best_deal
+from app.db.session import get_db
 
 router = APIRouter(prefix="/api/v1/deal-hunter", tags=["Deal Hunter Agent"])
 
@@ -32,12 +34,10 @@ class DealHunterRequest(BaseModel):
     status_code=status.HTTP_200_OK,
     summary="Evaluate purchase deals across Indian e-commerce platforms",
 )
-async def evaluate_deal(request: DealHunterRequest):
-    """
-    Evaluates deals for a given product or URL across Amazon India, Flipkart, Croma, Reliance Digital.
-    Calculates net effective prices after bank offers & coupons, compares against 90-day lows,
-    assigns deal badges (🟢 Good Deal / 🟡 Average / 🔴 Poor Deal), and provides pure AI recommendations.
-    """
+async def evaluate_deal(
+    request: DealHunterRequest,
+    db: AsyncSession = Depends(get_db),
+):
     if not request.product_input or not request.product_input.strip():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -47,12 +47,13 @@ async def evaluate_deal(request: DealHunterRequest):
     try:
         result = await find_best_deal(
             request.product_input.strip(),
+            db=db,
             user_banks=request.user_banks,
             disposable_budget=request.max_budget,
         )
         return result
-    except Exception as exc:
+    except Exception:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Deal Hunter Agent evaluation error: {str(exc)}",
+            detail="Deal Hunter Agent evaluation error",
         )

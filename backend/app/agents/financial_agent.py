@@ -3,7 +3,6 @@ import logging
 from typing import Optional
 
 from google import genai
-from google.genai import types
 from pydantic import BaseModel, Field
 
 from app.config import settings

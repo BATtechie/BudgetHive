@@ -1,6 +1,7 @@
 import ssl
-from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
+from urllib.parse import parse_qsl, urlencode, urlparse
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings
 
 
@@ -14,6 +15,9 @@ class Settings(BaseSettings):
     GEMINI_MODEL: str = "gemini-2.0-flash"
     GEMINI_MODEL_FALLBACKS: str = "gemini-2.0-flash-lite"
 
+    # CORS
+    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:5173"
+
     # Auth / JWT
     JWT_SECRET_KEY: str = "CHANGE_ME_IN_PRODUCTION"
     JWT_ALGORITHM: str = "HS256"
@@ -22,6 +26,14 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
+
+    @model_validator(mode="after")
+    def _reject_default_jwt_secret_in_production(self):
+        if not self.DEBUG and self.JWT_SECRET_KEY == "CHANGE_ME_IN_PRODUCTION":
+            raise ValueError(
+                "JWT_SECRET_KEY must be changed from the default when DEBUG is False"
+            )
+        return self
 
     @property
     def async_database_url(self) -> str:

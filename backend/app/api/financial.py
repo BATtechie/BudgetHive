@@ -1,18 +1,13 @@
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.financial_agent import FinancialEvaluation, evaluate_financials
-from app.core.security import decode_access_token
-from app.db.session import get_db
+from app.api.deps import get_optional_user
 from app.models.user import User
 
 router = APIRouter(prefix="/api/v1/financial", tags=["Financial Agent"])
-_bearer = HTTPBearer(auto_error=False)
 
 
 class FinancialRequest(BaseModel):
@@ -22,19 +17,6 @@ class FinancialRequest(BaseModel):
     monthly_savings_target: Optional[float] = Field(default=None, ge=0)
     active_emis: Optional[float] = Field(default=None, ge=0)
     recurring_bills: Optional[float] = Field(default=None, ge=0)
-
-
-async def get_optional_user(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer),
-    db: AsyncSession = Depends(get_db),
-) -> Optional[User]:
-    if credentials is None:
-        return None
-    user_id = decode_access_token(credentials.credentials)
-    if user_id is None:
-        return None
-    result = await db.execute(select(User).where(User.id == user_id))
-    return result.scalar_one_or_none()
 
 
 @router.post(

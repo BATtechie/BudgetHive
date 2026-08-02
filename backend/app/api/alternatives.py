@@ -27,12 +27,12 @@ async def evaluate_alternatives(request: AlternativesRequest) -> AlternativesEva
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="product_name must not be empty.")
 
     try:
-        return run_alternatives_agent(
+        return await run_alternatives_agent(
             product_name=request.product_name.strip(),
             category=request.category,
             price=request.price,
             budget_ceiling=request.budget_ceiling,
             primary_use_case=request.primary_use_case,
         )
-    except Exception as exc:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc))
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Alternatives evaluation error")

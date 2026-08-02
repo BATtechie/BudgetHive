@@ -3,10 +3,10 @@ from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.deps import get_current_user
 from app.db.session import get_db
 from app.models.purchase_history import PurchaseHistory
 from app.models.user import User
@@ -18,33 +18,6 @@ from app.schemas.purchase_history import (
 )
 
 router = APIRouter(prefix="/api/v1/purchase-history", tags=["Purchase History"])
-_bearer = HTTPBearer(auto_error=False)
-
-
-async def get_current_user(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer),
-    db: AsyncSession = Depends(get_db),
-) -> User:
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-
-    if credentials is None:
-        raise credentials_exception
-
-    try:
-        user_id = UUID(credentials.credentials)
-    except ValueError:
-        raise credentials_exception
-
-    result = await db.execute(select(User).where(User.id == user_id))
-    user = result.scalar_one_or_none()
-    if user is None:
-        raise credentials_exception
-
-    return user
 
 
 def resolve_category_tier(category: str) -> tuple[str, int]:
@@ -53,13 +26,13 @@ def resolve_category_tier(category: str) -> tuple[str, int]:
 
 
 def build_purchase_history_from_create(payload: PurchaseHistoryCreate, user_id: UUID) -> PurchaseHistory:
-    status = payload.status
+    history_status = payload.status
     usage_duration_days = payload.days_used_before_losing_interest
 
-    if status in {"STILL_USING_HAPPY", "STILL_USING_MEH", "BARELY_USE"}:
+    if history_status in {"STILL_USING_HAPPY", "STILL_USING_MEH", "BARELY_USE"}:
         is_returned = False
         is_resold = False
-    elif status == "RETURNED":
+    elif history_status == "RETURNED":
         is_returned = True
         is_resold = False
     else:
@@ -135,8 +108,6 @@ async def checkin_purchase_history(
         history.usage_duration_days = history.usage_duration_days or 30
         history.checkin_sent = True
     else:
-        if payload.still_using is not None:
-            history.usage_duration_days = history.usage_duration_days or 0
         if payload.returned is not None:
             history.is_returned = payload.returned
         if payload.resold is not None:
@@ -177,8 +148,4 @@ async def find_due_checkin_notifications(db: AsyncSession, user_id: Optional[UUI
         return tiered_rows
 
     weekly_cap = 1
-    week_start = today - timedelta(days=today.weekday())
-    week_rows = [row for row in tiered_rows if row.created_at >= week_start]
-    if len(week_rows) >= weekly_cap:
-        return week_rows[:1]
-    return tiered_rows
+    return tiered_rows[:weekly_cap]

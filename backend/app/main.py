@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.api import auth, users, deal_hunter, financial, need, alternatives, purchase_history
+from app.api import auth, users, deal_hunter, financial, need, alternatives, purchase_history, verdict
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -17,7 +17,7 @@ app = FastAPI(
 # ------------------------------------------------------------------
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:5173"],
+    allow_origins=[o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -33,6 +33,7 @@ app.include_router(financial.router)
 app.include_router(need.router)
 app.include_router(alternatives.router)
 app.include_router(purchase_history.router)
+app.include_router(verdict.router)
 
 
 # ------------------------------------------------------------------
