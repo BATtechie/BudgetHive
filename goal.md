@@ -85,6 +85,21 @@ Derived from `AUDIT_REPORT.md`. Phases are ordered by Impact vs Effort (highest 
 
 ---
 
+## Phase 7 — New Agent Build
+**Objective:** Build the Regret Predictor agent and upgrade the verdict orchestrator to selectively run five agents with dynamic weight rebalancing.
+
+- [x] **Regret Predictor Agent** — `backend/app/agents/regret_predictor_agent.py`: predicts regret likelihood (0-100) from purchase history patterns, financial score, and need score. Falls back to weighted formula `100 - (0.6*fin + 0.4*need)` when no history exists. Never fabricates data. **[Feature]**
+- [x] **Regret Predictor API** — `backend/app/api/regret_predictor.py`: standalone `POST /api/v1/regret/predict` endpoint with optional auth. **[Feature]**
+- [x] **Orchestrator upgrade** — Replaced `backend/app/api/verdict.py` with selective agent orchestrator. Decides which of 5 agents to run based on category + history + input availability. Dynamic weight rebalancing when agents are skipped. Returns which agents ran, why others were skipped, and per-agent output. **[Feature]**
+- [x] **Purchase-verdict linking** — `POST /api/v1/verdict/link-purchase/{verdict_id}/{purchase_id}` sets `PurchaseHistory.verdict_id`. **[Feature]**
+- [x] **Updated schemas** — `VerdictResponse` now includes `agents_ran` and `agents_skipped` fields. **[Feature]**
+- [x] **Tests — Regret Predictor** — `backend/test/test_regret_predictor_agent.py`: 17 tests covering risk classification, fallback formula, LLM mocking, score clamping, history data source. **[Feature]**
+- [x] **Tests — Orchestrator** — `backend/test/test_orchestrator.py`: 16 tests covering agent selection logic, weight rebalancing, verdict classification. **[Feature]**
+
+**Definition of Done:** App imports cleanly (15 routes). All 33 new tests pass offline with mocked LLM. Existing tests unaffected. Ruff F401 clean. Regret Predictor returns `FORMULA_FALLBACK` when no API key or history. Orchestrator skips agents with explicit reasons and redistributes weights proportionally.
+
+---
+
 ## Deferred (pending decision)
 
-- **H1 — Frontend rebuild or removal.** Per instruction, the stub in `frontend/src/App.jsx` is left in place for now. Revisit before shipping to end users.
+- [x] **H1 — Frontend rebuild.** Complete frontend built from scratch replacing the stub. See `frontend.md` for full build log. Includes landing, login, signup, dashboard with verdict evaluation, auth persistence, route guards, error boundaries, responsive design.

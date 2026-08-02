@@ -35,6 +35,12 @@ export const api = {
   login: (body) => request("/auth/login", { method: "POST", body }),
   me: (token) => request("/users/me", { token }),
   updateProfile: (body, token) => request("/users/me", { method: "PATCH", body, token }),
+
+  verdictEvaluate: (body, token) =>
+    request("/api/v1/verdict/evaluate", { method: "POST", body, token }),
+  verdictHistory: (token) =>
+    request("/api/v1/verdict/history", { token }),
+
   financialEvaluate: (body, token) =>
     request("/api/v1/financial/evaluate", { method: "POST", body, token }),
   needQuestions: (body) => request("/api/v1/need/questions", { method: "POST", body }),

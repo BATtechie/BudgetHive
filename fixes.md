@@ -131,3 +131,25 @@
 ## [Low] L8 — pragma: no cover on outermost exception handler
 **Issue:** `backend/app/agents/deal_hunter_agent.py` line 623 had `# pragma: no cover` suppressing coverage on the final safety-net exception handler.
 **Fix:** Removed the `# pragma: no cover` comment.
+
+## New Agents
+
+## Regret Predictor Agent (A5)
+**Issue:** No agent existed to predict purchase regret from historical patterns, financial health, and need assessment.
+**Fix:** Created `backend/app/agents/regret_predictor_agent.py` with `predict_regret()` function. Uses LLM when history + API key available, falls back to weighted formula `regret = 100 - (0.6 * financial_score + 0.4 * need_score)` when no history exists. Output: regret_score (0-100), risk_level (LOW/MEDIUM/HIGH), reasons list, confidence. Added standalone API at `POST /api/v1/regret/predict` in `backend/app/api/regret_predictor.py`.
+
+## Orchestrator Agent (Verdict Upgrade)
+**Issue:** The existing verdict endpoint (`POST /api/v1/verdict/evaluate`) always ran all four agents with fixed weights, had no Regret Predictor, and didn't explain which agents ran or why.
+**Fix:** Replaced `backend/app/api/verdict.py` with a selective orchestrator. Agent selection is explicit: Financial always runs; Need requires user answers or history; DealHunter/Alternatives require a supported retail category; RegretPredictor requires purchase history. When agents are skipped, their weight is redistributed proportionally to running agents. Base weights: Financial=25%, Need=25%, DealHunter=20%, Alternatives=15%, RegretPredictor=15%. Response now includes `agents_ran`, `agents_skipped` (with reasons), and per-agent output. Added `POST /api/v1/verdict/link-purchase/{verdict_id}/{purchase_id}` to wire `PurchaseHistory.verdict_id`. Updated `backend/app/schemas/verdict.py` with new response fields.
+
+## Frontend Build
+**Issue:** Frontend was a placeholder stub (`frontend/src/App.jsx` returned a single "Frontend removed" div). No pages, routing, auth, or design system existed.
+**Fix:** Built complete frontend from scratch. See [`frontend.md`](frontend.md) for full build log. Includes: design system (CSS custom properties, amber/honey palette), auth context (localStorage JWT, auto-fetch user), login/signup pages matching backend schemas exactly, landing page with hero + feature cards, dashboard with purchase evaluation form calling `/api/v1/verdict/evaluate` orchestrator, verdict result display (BUY/MAYBE/SKIP badge, score bar, per-agent breakdowns), route guards, error boundary, responsive layout. Added `verdictEvaluate` to `api.js`. Stack: react-router-dom, React Context + useReducer.
+
+## Frontend Phase 2 — Dark Theme Redesign
+**Issue:** Landing page was a basic light-themed hero with feature cards. Needed a complete redesign matching dark-themed reference screenshots with 5 specific sections, real orchestrator data, and a functional live demo.
+**Fix:** Rewrote `styles.css` with full dark theme design system (Playfair Display + Inter + JetBrains Mono fonts, dark palette). Rebuilt `Landing.jsx` with 5 sections: (1) Hero + Problem with ticker and 3 cards, (2) Agent showcase grid — 6 cards with real weights from `_BASE_WEIGHTS`, (3) Live product demo — functional form wired to `/api/v1/verdict/evaluate` with auth gating and demo credentials prompt, (4) How it works — 4-step flow + selective invocation table matching `_decide_agents()`, (5) Scoring breakdown — BUY/MAYBE/SKIP thresholds, weight bars with real percentages, weight redistribution callout, five-screens preview with Watchlist marked "Coming Soon". All numbers come from the real API — no hardcoded data.
+
+## Tests for New Agents
+**Issue:** No tests existed for the Regret Predictor or Orchestrator agent selection/weight logic.
+**Fix:** Added `backend/test/test_regret_predictor_agent.py` (17 tests: risk classification, fallback formula math, LLM mock success/failure, score clamping, history data source) and `backend/test/test_orchestrator.py` (16 tests: agent selection per category/history/input, weight rebalancing, verdict classification boundaries). All tests run offline with mocked LLM calls.

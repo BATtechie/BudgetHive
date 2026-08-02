@@ -10,7 +10,7 @@ Full re-read of every source file. Most Phase 1-6 items from `goal.md` are actua
 
 **R1. `backend/.env` is still tracked in git and still contains live secrets**
 - File: `backend/.env` (lines 6, 9, 14)
-- Only the JWT_SECRET_KEY changed value (old one is now in git history anyway). The Neon password `REDACTED` and Gemini key `REDACTED` are byte-for-byte identical to what was in the original audit — never rotated, never purged.
+- Only the JWT_SECRET_KEY changed value (old one is now in git history anyway). The Neon password and Gemini key are byte-for-byte identical to what was in the original audit — never rotated, never purged.
 - The `.gitignore` line 15 lists `.env` but a `git ls-files backend/.env` will still return the path because it was tracked before ignore was added. Phase 1 item C1 is marked `[x]` but was not actually done.
 
 **R2. `alembic/env.py` does not import `PriceSnapshot`**

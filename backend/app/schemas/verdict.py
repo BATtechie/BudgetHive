@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import List, Optional
+from typing import Dict, List, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -32,8 +32,10 @@ class AgentResultOut(BaseModel):
 class VerdictResponse(BaseModel):
     verdict_id: UUID
     product_name: str
-    verdict: str  # BUY / MAYBE / SKIP
+    verdict: str
     composite_score: float
     confidence_percentage: float
+    agents_ran: List[str]
+    agents_skipped: Dict[str, str]
     agent_results: List[AgentResultOut]
     created_at: datetime
