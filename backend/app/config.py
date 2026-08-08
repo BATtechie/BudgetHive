@@ -1,4 +1,5 @@
 import ssl
+from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlparse
 
 from pydantic import model_validator
@@ -24,7 +25,10 @@ class Settings(BaseSettings):
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days 
 
     class Config:
-        env_file = ".env"
+        env_file = (
+            Path(__file__).resolve().parent.parent / ".env",
+            ".env",
+        )
         env_file_encoding = "utf-8"
 
     @model_validator(mode="after")
